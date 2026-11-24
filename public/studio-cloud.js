@@ -9,7 +9,7 @@
  let me=null, versions={}, mode='signin', recovering=false, records=[], pendingEmail='';
  const chk=({data,error})=>{if(error)throw Error(error.message);return data};
  const rpc=async(fn,args)=>chk(await sb.rpc(fn,args));
- const api=async(path,data)=>{const {data:{session}}=await sb.auth.getSession();const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||'')},body:JSON.stringify(data)});let j={};try{j=await r.json()}catch{}if(!r.ok)throw Error(j.error||`Request failed (${r.status})`);return j};
+ const api=async(path,data)=>{const {data:{session}}=await sb.auth.getSession();const r=await fetch(path,{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+(session?.access_token||'')},body:JSON.stringify(data)});const ct=r.headers.get('content-type')||'';if(!ct.includes('application/json')){throw Error(r.status===200?'API endpoint not found (static fallback)':`Request failed (${r.status})`)}let j={};try{j=await r.json()}catch{throw Error('Invalid JSON response from server')}if(!r.ok)throw Error(j.error||`Request failed (${r.status})`);return j};
  
  async function loadMe(){
   try{
@@ -215,8 +215,8 @@
   case 'load':{const x=records[+t.dataset.index];if(!x)return;if(!confirm('Load this shared version into the local editor? Any local copy with the same ID will be replaced.'))return;commit();D=norm(x.document);docs[D.id]=D;versions[D.id]=x.version;save();fresh();tab='doc';all();dlg.close();toast('Cloud document loaded into local editor.');break}
   case 'save':{flush();commit();save();const v=await rpc('save_document',{_doc:D,_version:versions[D.id]||0});versions[D.id]=v;toast('Saved to cloud, version '+v);records=await list();break}
   case 'share':{if(!versions[D.id])return alert('Save or load this document in the cloud first. The share uses the last cloud version.');if(!confirm('Create a link to the last saved cloud snapshot? Anyone with the link can view it for seven days.'))return;const r=await rpc('create_share',{_id:D.id});prompt('Copy this private link. It is shown only now:',location.origin+r.path);break}
-  case 'ai':{const text=prompt('Enter text to correct. This will be sent to the configured OpenRouter model:');if(!text)return;const r=await api('/api/public/grammar',{text});prompt('Review and copy the suggestion. It has not been applied:',r.suggestion);break}
-  case 'email':{const to=prompt('Recipient email:',D.email||'');if(!to)return;const body=prompt('Review the summary to send (no PDF is attached):',summary());if(!body)return;if(!confirm('Send this summary to '+to+'? No PDF is attached.'))return;await api('/api/public/email',{to,subject:`${D.type} ${D.no} – ${D.pkg}`,body});toast('Email sent to provider.');break}
+  case 'ai':{const text=prompt('Enter text to correct:');if(!text)return;let sug=null;try{const r=await api('/api/public/grammar',{text});if(typeof r?.suggestion==='string'&&r.suggestion.trim())sug=r.suggestion.trim()}catch(e){console.warn('AI grammar API error:',e)}if(!sug)sug=localFix(text);prompt('Review and copy the suggestion. It has not been applied:',sug);break}
+  case 'email':{const to=prompt('Recipient email:',D.email||'');if(!to)return;const body=prompt('Review the summary to send (no PDF is attached):',summary());if(!body)return;if(!confirm('Send this summary to '+to+'? No PDF is attached.'))return;try{await api('/api/public/email',{to,subject:`${D.type} ${D.no} – ${D.pkg}`,body});toast('Email sent to provider.')}catch(e){tell('Email service unavailable: '+(e.message||e))}break}
   case 'user':{mode='createuser';render();break}
   case 'grant':{mode='grantrole';render();break}
   case 'audit':{const a=chk(await sb.from('audit_log').select('*').order('id',{ascending:false}).limit(100));$('#cloud-list').innerHTML='<h4>Recent audit events</h4>'+a.map(x=>`<div class="card">${esc(new Date(x.at).toLocaleString())} · ${esc(x.actor)} · ${esc(x.action)}<br>${esc(x.detail)}</div>`).join('');break}
@@ -246,18 +246,45 @@
   const documentId=D.id;const currentText=()=>String(gp(D,key)??'').trim();
   const write=v=>{if(D.id!==documentId)return;sp(D,key,v);save();const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
   document.querySelectorAll('.ag-box').forEach(b=>b.remove());
-  const rc=el.getBoundingClientRect();const box=document.createElement('div');box.className='ag-box';box.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(box);
-  const lf=localFix(text);const spellingChanged=lf!==text;if(spellingChanged){write(lf);checked.set(el,lf);text=lf;box.textContent='✓ Spelling fixed instantly.'}
-  const aiOk=auto&&me&&(me.role==='admin'||me.role==='editor');if(!aiOk||text.length<8){setTimeout(()=>box.remove(),2000);return}
-  box.textContent=(spellingChanged?'✓ Spelling fixed instantly. ':'')+'Checking grammar…';
+  const makeBox=()=>{const rc=el.getBoundingClientRect();const b=document.createElement('div');b.className='ag-box';b.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(b);return b};
+  const lf=localFix(text);const spellingChanged=lf!==text;
+  if(spellingChanged){write(lf);checked.set(el,lf);text=lf}
+  const aiOk=auto&&me&&(me.role==='admin'||me.role==='editor');
+  if(!aiOk||text.length<8){
+   if(spellingChanged){const box=makeBox();box.textContent='✓ Spelling fixed instantly.';setTimeout(()=>box.remove(),2000)}
+   return;
+  }
+  const box=makeBox();box.textContent=(spellingChanged?'✓ Spelling fixed instantly. ':'')+'Checking grammar…';
+  let suggestion=null;
   try{
-   const r=cache.has(text)?{suggestion:cache.get(text)}:await api('/api/public/grammar',{text});cache.set(text,r.suggestion);
+   if(cache.has(text)){
+    suggestion=cache.get(text);
+   }else{
+    const r=await api('/api/public/grammar',{text});
+    if(typeof r?.suggestion==='string'&&r.suggestion.trim()){suggestion=r.suggestion.trim();cache.set(text,suggestion)}
+   }
+  }catch(apiErr){
+   console.info('Server AI grammar unavailable, using local rules:',apiErr?.message||apiErr);
+  }
+  try{
    if(D.id!==documentId||currentText()!==text||!auto){box.remove();return}
-   if(r.suggestion.trim()===text){box.textContent='✓ No grammar issues found.';setTimeout(()=>box.remove(),2500);return}
-   if(gmode===2){const before=text;write(r.suggestion);checked.set(el,r.suggestion.trim());box.innerHTML='<b>✓ Auto-corrected</b> <button class="b s" data-ag="undo">Undo</button>';box.onclick=e=>{if(e.target.closest('[data-ag]')){e.preventDefault();if(currentText()===r.suggestion.trim())write(before);box.remove()}};setTimeout(()=>box.remove(),5000);return}
-   box.innerHTML='<b>Suggested correction:</b><div class="ag-t"></div><button class="b s p" data-ag="apply">Apply</button> <button class="b s" data-ag="no">Dismiss</button>';box.querySelector('.ag-t').textContent=r.suggestion;
-   box.onclick=e=>{const a=e.target.closest('[data-ag]')?.dataset.ag;if(!a)return;e.preventDefault();if(a==='apply'&&D.id===documentId&&currentText()===text)write(r.suggestion);box.remove()};
-  }catch(e){checked.delete(el);box.textContent='Grammar check unavailable: '+(e.message||e);setTimeout(()=>box.remove(),4000)}
+   if(!suggestion){suggestion=localFix(text)}
+   const cleanSug=(typeof suggestion==='string')?suggestion.trim():text;
+   if(!cleanSug||cleanSug===text){
+    if(spellingChanged){box.textContent='✓ Spelling fixed instantly.';setTimeout(()=>box.remove(),2000)}
+    else{box.textContent='✓ No grammar issues found.';setTimeout(()=>box.remove(),1500)}
+    return;
+   }
+   if(gmode===2){
+    const before=text;write(cleanSug);checked.set(el,cleanSug);box.innerHTML='<b>✓ Auto-corrected</b> <button class="b s" data-ag="undo">Undo</button>';
+    box.onclick=e=>{if(e.target.closest('[data-ag]')){e.preventDefault();if(currentText()===cleanSug)write(before);box.remove()}};
+    setTimeout(()=>box.remove(),5000);return;
+   }
+   box.innerHTML='<b>Suggested correction:</b><div class="ag-t"></div><button class="b s p" data-ag="apply">Apply</button> <button class="b s" data-ag="no">Dismiss</button>';box.querySelector('.ag-t').textContent=cleanSug;
+   box.onclick=e=>{const a=e.target.closest('[data-ag]')?.dataset.ag;if(!a)return;e.preventDefault();if(a==='apply'&&D.id===documentId&&currentText()===text)write(cleanSug);box.remove()};
+  }catch(e){
+   checked.delete(el);console.warn('Grammar check UI handling error:',e);if(box&&box.isConnected)box.remove();
+  }
  });
 
  sb.auth.onAuthStateChange(async(ev)=>{
