@@ -1,0 +1,6 @@
+- [x] Load master lists
+- [x] Searchable dropdowns in quote form
+- [x] Admin master-data screen
+- [x] Auto grammar fixed, Auto-fix default
+- [ ] Summary email (needs email service decision)
+- [x] Link imported packages to subcategories and filter Quote Studio choices; keep saved labels unchanged

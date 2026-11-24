@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: yatradham-quote-studio
+    env: static
+    buildCommand: bun install && bun run build
+    staticPublishPath: .output/public
+    routes:
+      - type: redirect
+        source: /
+        destination: /studio.html
+      - type: rewrite
+        source: /*
+        destination: /studio.html
+    envVars:
+      - key: SUPABASE_URL
+        value: https://rhviutmbiurgejvoxitp.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        value: sb_publishable_hOgX3byjYpF5ntglxVyGJA_BYtm7TeQ
+      - key: VITE_SUPABASE_URL
+        value: https://rhviutmbiurgejvoxitp.supabase.co
+      - key: VITE_SUPABASE_PUBLISHABLE_KEY
+        value: sb_publishable_hOgX3byjYpF5ntglxVyGJA_BYtm7TeQ

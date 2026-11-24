@@ -1,0 +1,72 @@
+[
+ {
+  "capability": "quotation editor UI",
+  "source": "public/index.html",
+  "outcome": "preserve as static page",
+  "status": "verified",
+  "next_action": "none"
+ },
+ {
+  "capability": "schema",
+  "source": "server.py SQLite",
+  "outcome": "migrate",
+  "status": "done",
+  "next_action": "none"
+ },
+ {
+  "capability": "records (documents, shares, audit)",
+  "source": "SQLite /data",
+  "outcome": "migrate",
+  "status": "pending",
+  "next_action": "user exports tables as CSV/JSON"
+ },
+ {
+  "capability": "auth identities",
+  "source": "SQLite users (username/password)",
+  "outcome": "migrate to Cloud email auth",
+  "status": "pending",
+  "next_action": "user supplies usernames+emails+roles"
+ },
+ {
+  "capability": "authorization roles admin/editor/viewer",
+  "source": "server.py",
+  "outcome": "migrate",
+  "status": "implemented",
+  "next_action": "signed-in e2e check"
+ },
+ {
+  "capability": "share links /s/<token>",
+  "source": "server.py",
+  "outcome": "preserve",
+  "status": "implemented",
+  "next_action": "signed-in e2e check"
+ },
+ {
+  "capability": "AI grammar (OpenRouter)",
+  "source": "server.py",
+  "outcome": "preserve provider",
+  "status": "in_progress",
+  "next_action": "OPENROUTER_API_KEY/MODEL secrets"
+ },
+ {
+  "capability": "SMTP summary email",
+  "source": "server.py",
+  "outcome": "preserve",
+  "status": "blocked",
+  "next_action": "SMTP not supported on the hosting runtime; needs decision"
+ },
+ {
+  "capability": "secrets",
+  "source": "env",
+  "outcome": "request securely",
+  "status": "pending",
+  "next_action": "ask before verification"
+ },
+ {
+  "capability": "verification",
+  "source": "-",
+  "outcome": "verify",
+  "status": "pending",
+  "next_action": "e2e test"
+ }
+]
