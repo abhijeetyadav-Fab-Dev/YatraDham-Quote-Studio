@@ -73,7 +73,7 @@
      }
     }
     await loadMe();
-    if(me?.role)rpc('write_audit',{_action:'login',_detail:'Sign in after verification'}).catch(()=>{});
+    try{if(me?.role)await rpc('write_audit',{_action:'login',_detail:'Sign in after verification'})}catch{}
     versions={};
     mode='team';
     render();
@@ -104,10 +104,10 @@
      }catch(rpcErr){
       console.warn('admin_grant_role RPC failed:',rpcErr);
       if(signUpData?.user?.id){
-       await sb.from('user_roles').upsert({user_id:signUpData.user.id,role},{onConflict:'user_id,role'}).catch(()=>{});
+       try{await sb.from('user_roles').upsert({user_id:signUpData.user.id,role},{onConflict:'user_id,role'})}catch{}
       }
      }
-     rpc('write_audit',{_action:'user.create',_detail:`${email} → ${role}`}).catch(()=>{});
+     try{await rpc('write_audit',{_action:'user.create',_detail:`${email} → ${role}`})}catch{}
     }
     toast(`User ${email} created as ${role}.`);
     mode='team';
@@ -125,8 +125,8 @@
      console.warn('Server API unavailable, falling back to RPC:',apiErr);
     }
     if(!granted){
-     await rpc('admin_grant_role',{_email:email,_role:role});
-     rpc('write_audit',{_action:'user.role',_detail:`${email} → ${role}`}).catch(()=>{});
+     try{await rpc('admin_grant_role',{_email:email,_role:role})}catch(e){console.warn('grant role RPC failed',e)}
+     try{await rpc('write_audit',{_action:'user.role',_detail:`${email} → ${role}`})}catch{}
     }
     toast(`Role ${role} granted to ${email}.`);
     mode='team';
@@ -139,7 +139,7 @@
     try{
      chk(await sb.auth.signInWithPassword({email,password}));
      await loadMe();
-     if(me?.role)rpc('write_audit',{_action:'login',_detail:'Sign in'}).catch(()=>{});
+     try{if(me?.role)await rpc('write_audit',{_action:'login',_detail:'Sign in'})}catch{}
      versions={};
      render();
     }catch(err){
@@ -210,7 +210,7 @@
    toast('Status refreshed.');
    break;
   }
-  case 'logout':if(me?.role)await rpc('write_audit',{_action:'logout',_detail:'Sign out'}).catch(()=>{});await sb.auth.signOut();me=null;versions={};render();break;
+  case 'logout':try{if(me?.role)await rpc('write_audit',{_action:'logout',_detail:'Sign out'})}catch{};await sb.auth.signOut();me=null;versions={};render();break;
   case 'list':records=await list();break;
   case 'load':{const x=records[+t.dataset.index];if(!x)return;if(!confirm('Load this shared version into the local editor? Any local copy with the same ID will be replaced.'))return;commit();D=norm(x.document);docs[D.id]=D;versions[D.id]=x.version;save();fresh();tab='doc';all();dlg.close();toast('Cloud document loaded into local editor.');break}
   case 'save':{flush();commit();save();const v=await rpc('save_document',{_doc:D,_version:versions[D.id]||0});versions[D.id]=v;toast('Saved to cloud, version '+v);records=await list();break}
