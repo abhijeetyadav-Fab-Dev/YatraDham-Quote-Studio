@@ -244,17 +244,17 @@
   let text=(ce?(el.dataset.el?[...el.children].map(li=>li.textContent.trim()).filter(Boolean).join('\n'):el.textContent.replace(/\s+/g,' ')):el.value).trim();
   if(text.length<3||text.length>4000||checked.get(el)===text)return;checked.set(el,text);
   const documentId=D.id;const currentText=()=>String(gp(D,key)??'').trim();
-  const write=v=>{if(D.id!==documentId)return;sp(D,key,v);save();const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
+  const write=v=>{if(D.id!==documentId)return;sp(D,key,v);save();if(ce){if(!el.dataset.el)el.textContent=v;checked.set(el,v.trim())}const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
   document.querySelectorAll('.ag-box').forEach(b=>b.remove());
   const makeBox=()=>{const rc=el.getBoundingClientRect();const b=document.createElement('div');b.className='ag-box';b.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(b);return b};
   const lf=localFix(text);const spellingChanged=lf!==text;
   if(spellingChanged){write(lf);checked.set(el,lf);text=lf}
   const aiOk=auto&&me&&(me.role==='admin'||me.role==='editor');
   if(!aiOk||text.length<8){
-   if(spellingChanged){const box=makeBox();box.textContent='✓ Spelling fixed instantly.';setTimeout(()=>box.remove(),2000)}
+   if(spellingChanged){const box=makeBox();box.textContent='✓ Corrected: '+text;setTimeout(()=>box.remove(),2500)}
    return;
   }
-  const box=makeBox();box.textContent=(spellingChanged?'✓ Spelling fixed instantly. ':'')+'Checking grammar…';
+  const box=makeBox();box.textContent=(spellingChanged?'✓ Corrected: '+text+' · ':'')+'Checking grammar…';
   let suggestion=null;
   try{
    if(cache.has(text)){
@@ -271,7 +271,7 @@
    if(!suggestion){suggestion=localFix(text)}
    const cleanSug=(typeof suggestion==='string')?suggestion.trim():text;
    if(!cleanSug||cleanSug===text){
-    if(spellingChanged){box.textContent='✓ Spelling fixed instantly.';setTimeout(()=>box.remove(),2000)}
+    if(spellingChanged){box.textContent='✓ Corrected: '+text;setTimeout(()=>box.remove(),2500)}
     else{box.textContent='✓ No grammar issues found.';setTimeout(()=>box.remove(),1500)}
     return;
    }

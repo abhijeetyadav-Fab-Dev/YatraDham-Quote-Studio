@@ -2,6 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { localFix } from '../../public/studio-grammar.js';
 
 describe('instant travel spelling corrections', () => {
+  it('corrects Guarat to Gujarat in package titles', () => {
+    expect(localFix('8 Days / 7 Nights Guarat Tour')).toBe('8 Days / 7 Nights Gujarat Tour');
+  });
+  it('corrects multiple Gujarat spelling variations', () => {
+    expect(localFix('Gujrat, Gujarath, Gujurat, Guarat')).toBe('Gujarat, Gujarat, Gujarat, Gujarat');
+  });
   it('corrects Stewell to Stepwell', () => {
     expect(localFix('Explore Adalaj Stewell.')).toBe('Explore Adalaj Stepwell.');
   });
