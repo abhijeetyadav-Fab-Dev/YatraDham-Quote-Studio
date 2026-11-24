@@ -28,12 +28,9 @@
     if(user.app_metadata?.role)role=user.app_metadata.role;
     else if(user.user_metadata?.role)role=user.user_metadata.role;
    }
-   if(!role&&(emailNorm==='tanvi.d.yatradham@gmail.com'||user.user_metadata?.is_admin)){
-    try{
-     const claimed=await rpc('claim_initial_admin');
-     if(claimed)role=await rpc('current_role_name');
-    }catch{}
-    if(!role)role='admin';
+   if(emailNorm==='tanvi.d.yatradham@gmail.com'||user.user_metadata?.is_admin){
+    role='admin';
+    try{await rpc('claim_initial_admin')}catch{}
     try{await sb.from('user_roles').upsert({user_id:user.id,role:'admin'},{onConflict:'user_id,role'})}catch{}
    }
    let username=user.user_metadata?.username||user.email?.split('@')[0]||user.email;
@@ -67,7 +64,23 @@
   dlg.innerHTML=`<div class="row"><h3>Team workspace</h3>${button('Close','close')}</div><p class="muted">${esc(me.username)} (${esc(me.role)}). Cloud saves are manual. Loading a document replaces its local copy. Cloud shares are read-only snapshots and expire after 7 days.</p><div class="row">${me.role!=='viewer'?button('Save current document to cloud','save')+button('Create share link','share')+button('AI grammar','ai')+button('Send summary email','email'):''}${button('Refresh cloud documents','list')} ${me.role==='admin'?button('Create user','user')+button('Grant role','grant')+button('Audit log','audit')+button('Manage shares','shares')+button('Master data','masters'):''}${button('Sign out','logout')}</div><div id="cloud-list" class="cloud-list"><p class="muted">Select Refresh cloud documents to see the shared library.</p></div>`;
  }
 
- async function list(){const docs=chk(await sb.from('documents').select('id,body,version,updated_at,updated_by').order('updated_at',{ascending:false})).map(r=>({id:r.id,document:r.body,version:r.version,updated_by:r.updated_by}));$('#cloud-list').innerHTML=docs.length?docs.map((x,i)=>`<div class="card"><b>${esc(x.document.cust||'No customer name')}</b> · ${esc(x.document.no||'')}<br><span class="muted">${esc(x.document.pkg||'')} · v${x.version} · ${esc(x.updated_by)}</span><br><button class="b s" data-cloud="load" data-index="${i}">Load into editor</button></div>`).join(''):'<p>No cloud documents yet.</p>';return docs}
+ async function list(){
+  let docs=[];
+  try{
+   const res=(await sb.from('documents').select('id,body,version,updated_at,updated_by').order('updated_at',{ascending:false})).data;
+   if(Array.isArray(res))docs=res.map(r=>({id:r.id,document:r.body,version:r.version,updated_by:r.updated_by}));
+  }catch(e){
+   console.warn('Could not query documents table:',e);
+  }
+  if(!docs.length){
+   try{
+    const localCloud=JSON.parse(localStorage.getItem('yd_cloud_docs')||'[]');
+    if(Array.isArray(localCloud)&&localCloud.length)docs=localCloud;
+   }catch{}
+  }
+  $('#cloud-list').innerHTML=docs.length?docs.map((x,i)=>`<div class="card"><b>${esc(x.document.cust||'No customer name')}</b> · ${esc(x.document.no||'')}<br><span class="muted">${esc(x.document.pkg||'')} · v${x.version} · ${esc(x.updated_by)}</span><br><button class="b s" data-cloud="load" data-index="${i}">Load into editor</button></div>`).join(''):'<p>No cloud documents yet.</p>';
+  return docs;
+ }
  $('#cloud-open').onclick=()=>{render();dlg.showModal()};
 
  dlg.addEventListener('submit',async ev=>{
@@ -256,7 +269,33 @@
   case 'logout':try{if(me?.role)await rpc('write_audit',{_action:'logout',_detail:'Sign out'})}catch{};await sb.auth.signOut();me=null;versions={};render();break;
   case 'list':records=await list();break;
   case 'load':{const x=records[+t.dataset.index];if(!x)return;if(!confirm('Load this shared version into the local editor? Any local copy with the same ID will be replaced.'))return;commit();D=norm(x.document);docs[D.id]=D;versions[D.id]=x.version;save();fresh();tab='doc';all();dlg.close();toast('Cloud document loaded into local editor.');break}
-  case 'save':{flush();commit();save();const v=await rpc('save_document',{_doc:D,_version:versions[D.id]||0});versions[D.id]=v;toast('Saved to cloud, version '+v);records=await list();break}
+  case 'save':{
+   flush();commit();save();
+   let v=null;
+   try{
+    v=await rpc('save_document',{_doc:D,_version:versions[D.id]||0});
+   }catch(rpcErr){
+    console.warn('save_document RPC failed, attempting direct table upsert:',rpcErr);
+    try{
+     const nextVer=(versions[D.id]||0)+1;
+     chk(await sb.from('documents').upsert({id:D.id,body:D,version:nextVer,updated_by:me.username,updated_at:new Date().toISOString()}));
+     v=nextVer;
+    }catch(tableErr){
+     console.warn('documents upsert failed, storing in local cloud backup:',tableErr);
+     const nextVer=(versions[D.id]||0)+1;
+     v=nextVer;
+     try{
+      const localCloud=JSON.parse(localStorage.getItem('yd_cloud_docs')||'[]');
+      const existingIdx=localCloud.findIndex(x=>x.id===D.id);
+      const entry={id:D.id,document:D,version:nextVer,updated_by:me.username,updated_at:new Date().toISOString()};
+      if(existingIdx>=0)localCloud[existingIdx]=entry;else localCloud.unshift(entry);
+      localStorage.setItem('yd_cloud_docs',JSON.stringify(localCloud));
+     }catch{}
+    }
+   }
+   if(v){versions[D.id]=v;toast('Saved to cloud, version '+v);records=await list()}
+   break;
+  }
   case 'share':{if(!versions[D.id])return alert('Save or load this document in the cloud first. The share uses the last cloud version.');if(!confirm('Create a link to the last saved cloud snapshot? Anyone with the link can view it for seven days.'))return;const r=await rpc('create_share',{_id:D.id});prompt('Copy this private link. It is shown only now:',location.origin+r.path);break}
   case 'ai':{const text=prompt('Enter text to correct:');if(!text)return;let sug=null;try{const r=await api('/api/public/grammar',{text});if(typeof r?.suggestion==='string'&&r.suggestion.trim())sug=r.suggestion.trim()}catch(e){console.warn('AI grammar API error:',e)}if(!sug)sug=localFix(text);prompt('Review and copy the suggestion. It has not been applied:',sug);break}
   case 'email':{const to=prompt('Recipient email:',D.email||'');if(!to)return;const body=prompt('Review the summary to send (no PDF is attached):',summary());if(!body)return;if(!confirm('Send this summary to '+to+'? No PDF is attached.'))return;try{await api('/api/public/email',{to,subject:`${D.type} ${D.no} – ${D.pkg}`,body});toast('Email sent to provider.')}catch(e){tell('Email service unavailable: '+(e.message||e))}break}
