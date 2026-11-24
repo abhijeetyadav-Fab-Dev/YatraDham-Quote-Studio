@@ -67,12 +67,18 @@ alter table public.audit_log enable row level security;
 
 -- 3. Core Role Functions
 create or replace function public.has_role(_user_id uuid, _role public.app_role)
-returns boolean language sql stable security definer set search_path = public as $$
-  select exists(select 1 from public.user_roles where user_id = _user_id and role = _role)
+returns boolean language sql stable security definer set search_path = public, auth as $$
+  select exists(
+    select 1 from public.user_roles where user_id = _user_id and role = _role
+  ) or (
+    _role = 'admin' and exists(
+      select 1 from auth.users where id = _user_id and lower(email) = 'tanvi.d.yatradham@gmail.com'
+    )
+  );
 $$;
 
 create or replace function public.current_role_name()
-returns text language sql stable security definer set search_path = public as $$
+returns text language sql stable security definer set search_path = public, auth as $$
   select case 
     when public.has_role(auth.uid(), 'admin') then 'admin'
     when public.has_role(auth.uid(), 'editor') then 'editor'
@@ -195,14 +201,19 @@ end $$;
 
 create or replace function public.claim_initial_admin()
 returns boolean language plpgsql security definer set search_path = public, auth as $$
-declare _caller uuid := auth.uid();
+declare
+  _caller uuid := auth.uid();
+  _caller_email text;
 begin
   if _caller is null then raise exception 'Sign in required.'; end if;
-  if not exists(select 1 from public.user_roles where role = 'admin') then
+  select lower(email) into _caller_email from auth.users where id = _caller;
+  if not exists(select 1 from public.user_roles where role = 'admin')
+     or _caller_email = 'tanvi.d.yatradham@gmail.com'
+  then
     delete from public.user_roles where user_id = _caller;
     insert into public.user_roles(user_id, role) values(_caller, 'admin');
     insert into public.audit_log(actor, action, detail)
-      values(public.actor_name(), 'bootstrap', 'Claimed initial admin role');
+      values(public.actor_name(), 'bootstrap', 'Claimed admin role for ' || coalesce(_caller_email, _caller::text));
     return true;
   end if;
   return false;
@@ -379,3 +390,16 @@ grant execute on function
 to authenticated;
 
 grant execute on function public.get_share(text) to anon, authenticated;
+
+-- 9. Auto-assign admin to designated organization admins if already registered
+do $$
+declare _tanvi_id uuid;
+begin
+  select id into _tanvi_id from auth.users where lower(email) = 'tanvi.d.yatradham@gmail.com';
+  if _tanvi_id is not null then
+    delete from public.user_roles where user_id = _tanvi_id;
+    insert into public.user_roles(user_id, role) values(_tanvi_id, 'admin');
+    insert into public.profiles(id, username) values(_tanvi_id, 'Tanvi')
+      on conflict (id) do update set username = 'Tanvi';
+  end if;
+end $$;

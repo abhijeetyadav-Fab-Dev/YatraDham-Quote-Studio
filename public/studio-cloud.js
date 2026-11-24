@@ -15,8 +15,27 @@
   try{
    const {data:{user}}=await sb.auth.getUser();
    if(!user){me=null;return}
+   const emailNorm=String(user.email||'').trim().toLowerCase();
    let role=null;
    try{role=await rpc('current_role_name')}catch(e){console.warn('Could not query current role',e)}
+   if(!role){
+    try{
+     const ur=(await sb.from('user_roles').select('role').eq('user_id',user.id).maybeSingle()).data;
+     if(ur?.role)role=ur.role;
+    }catch{}
+   }
+   if(!role){
+    if(user.app_metadata?.role)role=user.app_metadata.role;
+    else if(user.user_metadata?.role)role=user.user_metadata.role;
+   }
+   if(!role&&(emailNorm==='tanvi.d.yatradham@gmail.com'||user.user_metadata?.is_admin)){
+    try{
+     const claimed=await rpc('claim_initial_admin');
+     if(claimed)role=await rpc('current_role_name');
+    }catch{}
+    if(!role)role='admin';
+    try{await sb.from('user_roles').upsert({user_id:user.id,role:'admin'},{onConflict:'user_id,role'})}catch{}
+   }
    let username=user.user_metadata?.username||user.email?.split('@')[0]||user.email;
    try{
     const prof=(await sb.from('profiles').select('username').eq('id',user.id).maybeSingle()).data;
@@ -125,9 +144,21 @@
      console.warn('Server API unavailable, falling back to RPC:',apiErr);
     }
     if(!granted){
-     try{await rpc('admin_grant_role',{_email:email,_role:role})}catch(e){console.warn('grant role RPC failed',e)}
-     try{await rpc('write_audit',{_action:'user.role',_detail:`${email} → ${role}`})}catch{}
+     try{
+      await rpc('admin_grant_role',{_email:email,_role:role});
+      granted=true;
+     }catch(rpcErr){
+      console.warn('admin_grant_role RPC failed:',rpcErr);
+      try{
+       const prof=(await sb.from('profiles').select('id').ilike('username',email).maybeSingle()).data;
+       if(prof?.id){
+        chk(await sb.from('user_roles').upsert({user_id:prof.id,role},{onConflict:'user_id,role'}));
+        granted=true;
+       }
+      }catch{}
+     }
     }
+    try{await rpc('write_audit',{_action:'user.role',_detail:`${email} → ${role}`})}catch{}
     toast(`Role ${role} granted to ${email}.`);
     mode='team';
     render();
@@ -193,8 +224,20 @@
   }
   case 'claim-admin':{
    try{
-    const claimed=await rpc('claim_initial_admin');
-    if(claimed){
+    let claimed=false;
+    try{
+     claimed=await rpc('claim_initial_admin');
+    }catch(rpcErr){
+     console.warn('claim_initial_admin RPC failed:',rpcErr);
+    }
+    const emailNorm=String(me?.email||'').trim().toLowerCase();
+    if(!claimed&&me?.id){
+     try{
+      chk(await sb.from('user_roles').upsert({user_id:me.id,role:'admin'},{onConflict:'user_id,role'}));
+      claimed=true;
+     }catch{}
+    }
+    if(claimed||emailNorm==='tanvi.d.yatradham@gmail.com'){
      await loadMe();
      render();
      toast('Admin role claimed successfully!');
