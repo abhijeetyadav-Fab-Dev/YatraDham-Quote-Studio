@@ -47,6 +47,7 @@ const FIX = {
   porbander: 'Porbandar',
   porbandar: 'Porbandar',
   ahmedabd: 'Ahmedabad',
+  ahimedabad: 'Ahmedabad',
   amdavad: 'Ahmedabad',
   ahamedabad: 'Ahmedabad',
   ahmadabad: 'Ahmedabad',
