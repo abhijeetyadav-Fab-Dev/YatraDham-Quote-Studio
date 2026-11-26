@@ -91,6 +91,7 @@ const FIX = {
   jaisalmer: 'Jaisalmer',
   pushkar: 'Pushkar',
   maharastra: 'Maharashtra',
+  maharashrta: 'Maharashtra',
   maharashtra: 'Maharashtra',
   mumbai: 'Mumbai',
   bombay: 'Mumbai',
