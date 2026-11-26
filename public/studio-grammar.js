@@ -48,6 +48,10 @@ const FIX = {
   porbandar: 'Porbandar',
   ahmedabd: 'Ahmedabad',
   ahimedabad: 'Ahmedabad',
+  amedabad: 'Ahmedabad',
+  ahmdabad: 'Ahmedabad',
+  ahmedaad: 'Ahmedabad',
+  ahamedbad: 'Ahmedabad',
   amdavad: 'Ahmedabad',
   ahamedabad: 'Ahmedabad',
   ahmadabad: 'Ahmedabad',
@@ -229,11 +233,55 @@ const PHRASES = [
   [/\s+([,.;:!?])/g, '$1']
 ];
 
+const CANONICAL = [
+  'Ahmedabad', 'Gujarat', 'Maharashtra', 'Uttarakhand', 'Rajasthan', 'Dwarka', 'Somnath',
+  'Junagadh', 'Porbandar', 'Vadodara', 'Rajkot', 'Gandhinagar', 'Sabarmati', 'Akshardham',
+  'Kankaria', 'Nageshwar', 'Trimbakeshwar', 'Bhimashankar', 'Grishneshwar', 'Shingnapur',
+  'Haridwar', 'Rishikesh', 'Kedarnath', 'Badrinath', 'Gangotri', 'Yamunotri', 'Varanasi',
+  'Prayagraj', 'Ayodhya', 'Vrindavan', 'Mathura', 'Tirupati', 'Rameswaram', 'Kanyakumari',
+  'Madurai', 'Amritsar', 'Dehradun', 'Bengaluru', 'Alappuzha', 'accommodation',
+  'sightseeing', 'itinerary', 'cancellation', 'breakfast'
+];
+const CANON_SET = new Set(CANONICAL.map(w => w.toLowerCase()));
+
+function osa(a, b) {
+  const m = a.length, n = b.length;
+  if (Math.abs(m - n) > 2) return 99;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        dp[i][j] = Math.min(dp[i][j], dp[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return dp[m][n];
+}
+
+function fuzzyMatch(wl) {
+  if (wl.length < 6 || CANON_SET.has(wl)) return null;
+  const maxD = wl.length >= 8 ? 2 : 1;
+  let best = null, bestD = maxD + 1, tied = false;
+  for (const c of CANONICAL) {
+    const cl = c.toLowerCase();
+    if (cl[0] !== wl[0]) continue;
+    const d = osa(wl, cl);
+    if (d < bestD) { best = c; bestD = d; tied = false; }
+    else if (d === bestD && best !== c) { tied = true; }
+  }
+  return !tied && bestD <= maxD ? best : null;
+}
+
 export const localFix = t => {
   if (typeof t !== 'string' || !t) return t;
   let out = t.replace(/[A-Za-z_]+/g, w => {
-    const r = FIX[w.toLowerCase()];
-    if (!r || (r.toLowerCase() === w.toLowerCase() && r === w)) return w;
+    const wl = w.toLowerCase();
+    const r = FIX[wl] || fuzzyMatch(wl);
+    if (!r || (r.toLowerCase() === wl && r === w)) return w;
     if (w === w.toUpperCase() && w.length > 1) return r.toUpperCase();
     if (w[0] === w[0].toLowerCase() && r[0] === r[0].toLowerCase()) return r;
     return w[0] === w[0].toUpperCase() ? r[0].toUpperCase() + r.slice(1) : r;

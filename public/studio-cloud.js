@@ -317,7 +317,7 @@
  setInterval(paintTog,1500);paintTog();
 
  /* Instant local spelling fixes (no AI, no wait). */
- const {localFix}=await import('/studio-grammar.js');
+ const {localFix}=await import('/studio-grammar.js?v=fuzzy_fix');
  window.ydLocalFix=localFix;
  document.addEventListener('focusout',async ev=>{
   const el=ev.target;const ce=el instanceof HTMLElement&&el.isContentEditable&&(el.dataset.e||el.dataset.el)&&!el.dataset.n;
@@ -328,7 +328,7 @@
   const documentId=D.id;const currentText=()=>String(gp(D,key)??'').trim();
   const write=v=>{if(D.id!==documentId)return;sp(D,key,v);save();if(ce){if(!el.dataset.el)el.textContent=v;checked.set(el,v.trim())}const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
   document.querySelectorAll('.ag-box').forEach(b=>b.remove());
-  const makeBox=()=>{const rc=el.getBoundingClientRect();const b=document.createElement('div');b.className='ag-box';b.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(b);return b};
+  const makeBox=()=>{const target=el.isConnected?el:(document.querySelector(`#sheet [data-e="${CSS.escape(key)}"]`)||document.querySelector(`#pane [data-p="${CSS.escape(key)}"]`)||el);const rc=target.getBoundingClientRect();const b=document.createElement('div');b.className='ag-box';b.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(b);return b};
   const lf=localFix(text);const spellingChanged=lf!==text;
   if(spellingChanged){write(lf);checked.set(el,lf);text=lf}
   const aiOk=auto&&me&&(me.role==='admin'||me.role==='editor');

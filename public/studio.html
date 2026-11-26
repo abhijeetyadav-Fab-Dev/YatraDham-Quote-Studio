@@ -215,5 +215,5 @@ $('#sheet').addEventListener('paste',e=>{e.preventDefault();document.execCommand
 $('#sheet').addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.closest('[data-e]'))e.preventDefault()});
 $('#sheet').addEventListener('focusout',()=>setTimeout(()=>{if(!document.activeElement?.closest('[data-e],[data-el]'))draw()},250));
 D=norm(docs[ld('yd_cur','')]||Object.values(docs)[0]||newDoc());fresh();save();all();
-</script><script src="/studio-cloud.js?v=admin_fixed"></script><script>
+</script><script src="/studio-cloud.js?v=fuzzy_fix"></script><script>
 </script></body></html>
