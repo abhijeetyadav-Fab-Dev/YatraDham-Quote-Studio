@@ -37,7 +37,7 @@ export async function authenticate(request: Request) {
     if (!claimsError && claimsData?.claims?.sub) {
       userId = claimsData.claims.sub as string;
     }
-  } catch {}
+  } catch { /* fallback to getUser */ }
 
   if (!userId) {
     try {
@@ -45,7 +45,7 @@ export async function authenticate(request: Request) {
       if (!userError && userData?.user?.id) {
         userId = userData.user.id;
       }
-    } catch {}
+    } catch { /* ignore invalid token */ }
   }
 
   if (!userId) return null;
@@ -62,7 +62,7 @@ export async function authenticate(request: Request) {
     try {
       const { data: ur } = await supabase.from("user_roles").select("role").eq("user_id", userId).maybeSingle();
       if (ur?.role) role = ur.role;
-    } catch {}
+    } catch { /* fallback to email check */ }
   }
 
   if (!role) {
@@ -72,7 +72,7 @@ export async function authenticate(request: Request) {
       if (email === "tanvi.d.yatradham@gmail.com") {
         role = "admin";
       }
-    } catch {}
+    } catch { /* ignore */ }
   }
 
   return { supabase, userId, role };

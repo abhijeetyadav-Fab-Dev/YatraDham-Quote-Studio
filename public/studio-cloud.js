@@ -29,9 +29,12 @@
     else if(user.user_metadata?.role)role=user.user_metadata.role;
    }
    if(emailNorm==='tanvi.d.yatradham@gmail.com'||user.user_metadata?.is_admin){
+    const needsDbAdmin=role!=='admin';
     role='admin';
-    try{await rpc('claim_initial_admin')}catch{}
-    try{await sb.from('user_roles').upsert({user_id:user.id,role:'admin'},{onConflict:'user_id,role'})}catch{}
+    if(needsDbAdmin){
+     try{await rpc('claim_initial_admin')}catch{}
+     try{await sb.from('user_roles').upsert({user_id:user.id,role:'admin'},{onConflict:'user_id,role'})}catch{}
+    }
    }
    let username=user.user_metadata?.username||user.email?.split('@')[0]||user.email;
    try{
@@ -49,6 +52,7 @@
 
  function render(){
   $('#cloud-status').textContent=me?(me.role?`${me.username} · ${me.role} · manual sync`:`${me.username} · awaiting access`):'Not signed in';
+  if(typeof paintTog==='function')paintTog();
   if(recovering){dlg.innerHTML=`<h3>Choose a new password</h3><form id="pwform"><label>New password<input name="password" type="password" minlength="12" required autocomplete="new-password"></label><button class="b p">Save password</button></form>`;return}
   if(!me){
    if(mode==='otp'){
@@ -314,7 +318,7 @@
  const LBL=['Off','Suggest','Auto-fix'];
  const paintTog=()=>{tog.textContent='Auto grammar: '+LBL[gmode];tog.style.display=me&&(me.role==='admin'||me.role==='editor')?'':'none'};
  tog.onclick=()=>{gmode=(gmode+1)%3;auto=gmode>0;localStorage.setItem('yd-auto-grammar2',String(gmode));paintTog();toast(['Auto grammar off.','Suggest mode: corrections are shown when you leave a box.','Auto-fix mode: corrections are applied automatically when you leave a box (Undo available).'][gmode])};
- setInterval(paintTog,1500);paintTog();
+ paintTog();
 
  /* Instant local spelling fixes (no AI, no wait). */
  const {localFix}=await import('/studio-grammar.js?v=fuzzy_fix');
@@ -326,7 +330,7 @@
   let text=(ce?(el.dataset.el?[...el.children].map(li=>li.textContent.trim()).filter(Boolean).join('\n'):el.textContent.replace(/\s+/g,' ')):el.value).trim();
   if(text.length<3||text.length>4000||checked.get(el)===text)return;checked.set(el,text);
   const documentId=D.id;const currentText=()=>String(gp(D,key)??'').trim();
-  const write=v=>{if(D.id!==documentId)return;sp(D,key,v);save();if(ce){if(!el.dataset.el)el.textContent=v;checked.set(el,v.trim())}const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
+  const write=v=>{if(D.id!==documentId)return;if(window.ydSet)window.ydSet(key,v);else{sp(D,key,v);save()}if(ce){if(!el.dataset.el)el.textContent=v;checked.set(el,v.trim())}const live=document.querySelector(`#pane [data-p="${CSS.escape(key)}"]:not([data-s])`);if(live){live.value=v;checked.set(live,v.trim())}draw()};
   document.querySelectorAll('.ag-box').forEach(b=>b.remove());
   const makeBox=()=>{const target=el.isConnected?el:(document.querySelector(`#sheet [data-e="${CSS.escape(key)}"]`)||document.querySelector(`#pane [data-p="${CSS.escape(key)}"]`)||el);const rc=target.getBoundingClientRect();const b=document.createElement('div');b.className='ag-box';b.style.cssText=`position:fixed;z-index:9999;left:${Math.max(8,rc.left)}px;top:${Math.max(8,Math.min(innerHeight-140,rc.bottom+4))}px;max-width:${Math.max(260,rc.width)}px;color:#222;box-shadow:0 4px 14px rgba(0,0,0,.2);padding:8px;border:1px solid #c9a227;background:#fff8e1;border-radius:7px;font:13px system-ui;white-space:pre-wrap`;document.body.append(b);return b};
   const lf=localFix(text);const spellingChanged=lf!==text;
@@ -394,7 +398,7 @@
   const html=packageChoices(MS.pkg,MS.sub,D.ptype).map(o=>`<option value="${esc(o.v)}"></option>`).join('');
   if(html!==packageMarkup){packageMarkup=html;dl.innerHTML=html}}
  document.addEventListener('input',ev=>{const key=ev.target.dataset?.p||ev.target.closest?.('[data-e]')?.dataset.e;if(key==='ptype')attach()});
- new MutationObserver(attach).observe(document.body,{childList:true,subtree:true});
+ const paneEl=$('#pane');if(paneEl)new MutationObserver(attach).observe(paneEl,{childList:true});
  async function addMaster(k,val){
   if(k==='city'){const [c,st]=val.split(',').map(x=>x.trim());const s=(MS.states||[]).find(x=>x.name.toLowerCase()===(st||'').toLowerCase());if(!c||!s)throw Error('Write it as "City, State" with a valid Indian state.');chk(await sb.from('cities').insert({city_name:c,state_id:s.id}))}
   else if(k==='veh'){const m=val.match(/^(.*?)\s*\((\d+)\s*Seater\)$/i);const name=(m?m[1]:val).trim();const cap=m?+m[2]:+prompt('Seating capacity (number):','');const cat=(prompt('Category: car, suv, tempo, bus or other','car')||'').toLowerCase();if(!['car','suv','tempo','bus','other'].includes(cat))throw Error('Category must be car, suv, tempo, bus or other.');chk(await sb.from('vehicle_types').insert({vehicle_name:name,seating_capacity:cap||null,category:cat}))}
